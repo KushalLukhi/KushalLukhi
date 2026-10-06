@@ -1,40 +1,35 @@
 """
 Convert a portrait photo into a clean, monochrome ASCII-art SVG (one light-gray color,
-subject isolated on a dark terminal background) that "types" itself in row by row, then holds.
+subject on a dark terminal background) that "types" itself in row by row, then holds.
 
-GitHub renders SVGs embedded via <img> and runs their SMIL animations there.
-Each row is revealed with a left-to-right clip wipe plus a small block cursor riding the wipe edge,
-staggered top -> bottom, so the whole portrait prints once and freezes.
+Optimized for dark terminal backgrounds:
+- Background and dark shadows/stripes map to blank space ' ' (terminal color #0d1117 shows through)
+- Facial features, line art contours, glowing eyes, and highlights map to ASCII characters #c9d1d9
+- SMIL left-to-right clip-wipe animation with typing cursor sweeps down from top to bottom
 """
 import html
 import os
 import sys
-from PIL import Image, ImageEnhance, ImageFilter
+import cv2
+import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SRC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", "source-prepped.png")
+SRC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", "source-photo.png")
 OUT = sys.argv[2] if len(sys.argv) > 2 else os.path.join(HERE, "..", "kushal-ascii.svg")
 
-COLS = int(os.environ.get("COLS", 180))
+COLS = int(os.environ.get("COLS", 140))
 ART_W_TARGET = 800
 CELL_W = ART_W_TARGET / COLS
 CELL_H = CELL_W * 15 / 8
 ROWS = round(COLS * 8 / 15)
-RAMP = " .`:-=+*cs#%@"  # bright(sparse) -> dark(dense); leading space clears bg
-
-CONTRAST = 1.05
-BRIGHTNESS = 1.0
-GAMMA = 1.15
-SHARPEN = False
-WHITE_FLOOR = 0.82    # luminance above this is forced to blank space
 
 PAD = 20
 TITLEBAR_H = 30
 STATUS_H = 30
 ART_W = COLS * CELL_W
 ART_H = ROWS * CELL_H
-CANVAS_W = ART_W + PAD * 2
-CANVAS_H = TITLEBAR_H + ART_H + STATUS_H + PAD
+CANVAS_W = 840
+CANVAS_H = 880
 
 BG = "#0d1117"
 BG2 = "#111722"
@@ -48,31 +43,50 @@ ROW_DUR = 5.8 / ROWS
 STAGGER = ROW_DUR
 
 if not os.path.exists(SRC):
-    print(f"Error: {SRC} does not exist. Run prep_photo.py first.", file=sys.stderr)
+    print(f"Error: {SRC} does not exist.", file=sys.stderr)
     sys.exit(1)
 
-im = Image.open(SRC).convert("L")
-if SHARPEN:
-    im = im.filter(ImageFilter.UnsharpMask(radius=2, percent=140, threshold=2))
-im = ImageEnhance.Brightness(im).enhance(BRIGHTNESS)
-im = ImageEnhance.Contrast(im).enhance(CONTRAST)
-im = im.resize((COLS, ROWS), Image.LANCZOS)
-px = im.load()
+# Read image
+img = cv2.imread(SRC)
+if img is None:
+    print(f"Error reading {SRC}", file=sys.stderr)
+    sys.exit(1)
 
-STATIC = bool(os.environ.get("STATIC"))
+gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+# Bilateral smoothing: preserves sharp edges while removing grain
+smooth = cv2.bilateralFilter(gray, 7, 45, 45)
+
+# Difference of Gaussians edge detector for crisp manga/anime contours
+g1 = cv2.GaussianBlur(smooth, (0, 0), 1.0).astype(np.float32)
+g2 = cv2.GaussianBlur(smooth, (0, 0), 3.5).astype(np.float32)
+edges = np.clip(np.abs(g1 - g2) * 4.2, 0, 255).astype(np.uint8)
+
+# Highlights & face skin: zero out dark background (< 15)
+hl = np.where(smooth > 15, smooth, 0).astype(np.float32)
+hl_attenuated = np.clip(hl * 0.72, 0, 255).astype(np.uint8)
+
+# Combine line art edges + highlights
+combined = cv2.addWeighted(edges, 1.45, hl_attenuated, 0.75, 0)
+combined = np.where(smooth > 15, combined, 0).astype(np.uint8)
+
+# Resize to ASCII grid
+small = cv2.resize(combined, (COLS, ROWS), interpolation=cv2.INTER_AREA)
+
+# ASCII density ramp for dark background (sparse/empty -> bright dense)
+RAMP = " .:-=+*cs#%@"
 
 rows_txt = []
 for y in range(ROWS):
     chars = []
     for x in range(COLS):
-        lum = px[x, y] / 255.0
-        lum = pow(lum, GAMMA)
-        if lum >= WHITE_FLOOR:
+        val = small[y, x]
+        if val < 20:
             chars.append(" ")
-            continue
-        idx = int((1.0 - lum) * (len(RAMP) - 1) + 0.5)
-        idx = max(0, min(len(RAMP) - 1, idx))
-        chars.append(RAMP[idx])
+        else:
+            idx = int(val / 255.0 * (len(RAMP) - 1))
+            idx = max(0, min(len(RAMP) - 1, idx))
+            chars.append(RAMP[idx])
     rows_txt.append("".join(chars))
 
 art_top = TITLEBAR_H + PAD * 0.35
@@ -93,7 +107,9 @@ for i, dotcol in enumerate(["#ff5f56", "#ffbd2e", "#27c93f"]):
 parts.append(f'<text x="{CANVAS_W/2}" y="{TITLEBAR_H/2 + 4}" fill="{TITLE_TEXT}" font-size="12" '
              f'text-anchor="middle">kushal@github: ~$ ./portrait.sh</text>')
 
+STATIC = bool(os.environ.get("STATIC"))
 font_size = CELL_H * 0.86
+
 for ry, line in enumerate(rows_txt):
     y = art_top + ry * CELL_H + CELL_H * 0.74
     row_y = art_top + ry * CELL_H
