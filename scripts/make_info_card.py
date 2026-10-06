@@ -45,7 +45,7 @@ ROWS = [
     ("gap",),
     ("sec", "Featured Projects"),
     ("bul", "dictly-whisper: AI speech-to-text dictation app"),
-    ("bul", "gemini-watermark-remover: in-browser AI media tool"),
+    ("bul", "geminiremove.com: in-browser AI media cleanup tool"),
     ("gap",),
     ("sec", "Core Tech Stack"),
     ("kv", "Languages", "Python, TypeScript, JavaScript, SQL"),

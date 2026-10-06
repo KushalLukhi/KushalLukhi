@@ -34,7 +34,7 @@
 
 [![GitHub](https://img.shields.io/badge/GitHub-KushalLukhi-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/KushalLukhi)
 [![dictly-whisper](https://img.shields.io/badge/Project-dictly--whisper-22d3ee?style=for-the-badge&logo=openai&logoColor=black)](https://github.com/KushalLukhi/dictly-whisper)
-[![gemini-watermark-remover](https://img.shields.io/badge/Tool-gemini--watermark--remover-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://github.com/KushalLukhi/gemini-watermark-remover)
+[![gemini-watermark-remover](https://img.shields.io/badge/Tool-geminiremove.com-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://www.geminiremove.com)
 
 <br>
 
